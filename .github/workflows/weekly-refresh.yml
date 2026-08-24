@@ -1,0 +1,73 @@
+name: Weekly internship refresh
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - quant_internships_2027.json
+      - quant_internships_2027.md
+      - .github/workflows/weekly-refresh.yml
+      - scripts/weekly-refresh.mjs
+  schedule:
+    # Monday 10:17 Asia/Shanghai (UTC+8). The non-zero minute reduces peak-time delays.
+    - cron: "17 2 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: quant-internship-pages
+  cancel-in-progress: false
+
+jobs:
+  refresh-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out tracker
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Refresh internship data
+        if: github.event_name != 'push'
+        run: node scripts/weekly-refresh.mjs
+
+      - name: Save refreshed data
+        if: github.event_name != 'push'
+        run: |
+          if git diff --quiet; then
+            echo "No tracker changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html quant_internships_2027.json quant_internships_2027.md
+          git commit -m "Weekly internship refresh"
+          git push
+
+      - name: Prepare public site
+        run: |
+          mkdir _site
+          cp index.html quant_internships_2027.json quant_internships_2027.md .nojekyll _site/
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
